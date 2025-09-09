@@ -29,25 +29,12 @@ const AssetCard: React.FC<{
     onDownload(asset);
   };
 
-  const isVideo = asset.type === AssetType.Video;
-
   return (
     <div 
         className="group relative overflow-hidden rounded-lg shadow-lg bg-gray-800 cursor-pointer mb-4 break-inside-avoid"
         onClick={() => onPreview(asset)}
     >
-      {isVideo ? (
-        <video 
-          src={asset.url} 
-          className="w-full h-auto transition-transform duration-300 group-hover:scale-105" 
-          autoPlay 
-          loop 
-          muted 
-          playsInline
-        />
-      ) : (
-        <img src={asset.url} alt={asset.prompt} className="w-full h-auto transition-transform duration-300 group-hover:scale-105" />
-      )}
+      <img src={asset.url} alt={asset.prompt} className="w-full h-auto transition-transform duration-300 group-hover:scale-105" />
       
       <div className={`absolute inset-0 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center`}>
         <div className="p-4 absolute bottom-0 left-0 right-0 text-white">
@@ -82,6 +69,7 @@ const AssetGallery: React.FC<AssetGalleryProps> = ({ assets }) => {
         .sort((a, b) => {
             const dateA = new Date(a.createdAt).getTime();
             const dateB = new Date(b.createdAt).getTime();
+            // Fix: Corrected arithmetic operation by using `dateB` instead of `b.createdAt`.
             return sort === 'newest' ? dateB - dateA : dateA - dateB;
         });
   }, [assets, filter, sort]);
@@ -91,31 +79,20 @@ const AssetGallery: React.FC<AssetGalleryProps> = ({ assets }) => {
     link.href = asset.url;
 
     let extension = 'jpeg';
-    if (asset.type === AssetType.Image) {
-        const mimeTypeMatch = asset.url.match(/data:image\/([^;]+);/);
-        if (mimeTypeMatch && mimeTypeMatch[1]) {
-            extension = mimeTypeMatch[1];
-        }
-    } else if (asset.type === AssetType.Video) {
-        const mimeTypeMatch = asset.url.match(/data:video\/([^;]+);/);
-        if (mimeTypeMatch && mimeTypeMatch[1]) {
-            extension = mimeTypeMatch[1];
-        } else {
-            extension = 'mp4';
-        }
+    const mimeTypeMatch = asset.url.match(/data:image\/([^;]+);/);
+    if (mimeTypeMatch && mimeTypeMatch[1]) {
+        extension = mimeTypeMatch[1];
     }
-
+    
     link.download = `ai-influencer-studio-${asset.id}.${extension}`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  const filterButtons: { label: string; value: 'all' | AssetType }[] = [
+  const filterButtons: { label: string; value: 'all' | AssetType.Image }[] = [
     { label: 'All', value: 'all' },
     { label: 'Images', value: AssetType.Image },
-    // Fix: Add a filter button for videos.
-    { label: 'Videos', value: AssetType.Video },
   ];
 
   return (

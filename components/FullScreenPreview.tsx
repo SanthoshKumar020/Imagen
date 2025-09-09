@@ -1,6 +1,6 @@
 
 import React, { useEffect, useCallback } from 'react';
-import { GeneratedAsset, AssetType } from '../types';
+import { GeneratedAsset } from '../types';
 import Button from './ui/Button';
 
 interface FullScreenPreviewProps {
@@ -31,8 +31,6 @@ const FullScreenPreview: React.FC<FullScreenPreviewProps> = ({ asset, onClose, o
     };
   }, [handleKeyDown]);
 
-  const isVideo = asset.type === AssetType.Video;
-
   return (
     <div 
       className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
@@ -53,29 +51,18 @@ const FullScreenPreview: React.FC<FullScreenPreviewProps> = ({ asset, onClose, o
         </button>
 
         <div className="flex-grow flex items-center justify-center overflow-hidden mb-4">
-            {isVideo ? (
-              <video
-                src={asset.url}
-                controls
-                autoPlay
-                loop
-                className="max-w-full max-h-full h-auto w-auto object-contain rounded-md"
-                style={{ maxHeight: 'calc(100vh - 180px)'}}
-              />
-            ) : (
-              <img 
-                  src={asset.url} 
-                  alt={asset.prompt}
-                  className="max-w-full max-h-full h-auto w-auto object-contain rounded-md"
-                  style={{ maxHeight: 'calc(100vh - 180px)'}}
-              />
-            )}
+          <img 
+              src={asset.url} 
+              alt={asset.prompt}
+              className="max-w-full max-h-full h-auto w-auto object-contain rounded-md"
+              style={{ maxHeight: 'calc(100vh - 180px)'}}
+          />
         </div>
 
         <div className="flex-shrink-0 bg-gray-800/50 p-3 rounded-md max-h-40 overflow-y-auto">
             <p className="text-sm text-gray-300 mb-3 font-mono">{asset.prompt}</p>
             <Button onClick={() => onDownload(asset)} className="w-full sm:w-auto">
-                Download {isVideo ? 'Video' : 'Image'}
+                Download Image
             </Button>
         </div>
 

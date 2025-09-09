@@ -18,8 +18,6 @@ export interface CanonImage {
 
 export enum AssetType {
   Image = 'image',
-  // Fix: Added Video type to support video assets.
-  Video = 'video',
 }
 
 export interface GeneratedAsset {

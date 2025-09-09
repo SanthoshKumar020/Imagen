@@ -1,12 +1,12 @@
-
 import React, { useState, useCallback } from 'react';
 import { CharacterProfile, GeneratedAsset } from './types';
 import Header from './components/Header';
 import CharacterProfileForm from './components/CharacterProfileForm';
 import ImageGenerator from './components/ImageGenerator';
 import AssetGallery from './components/AssetGallery';
+import { ApiKeyProvider } from './contexts/ApiKeyContext';
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [characterProfile, setCharacterProfile] = useState<CharacterProfile>({
     name: 'San2AI',
     age: 22,
@@ -53,5 +53,14 @@ const App: React.FC = () => {
     </div>
   );
 };
+
+const App: React.FC = () => {
+  return (
+    <ApiKeyProvider>
+      <AppContent />
+    </ApiKeyProvider>
+  );
+};
+
 
 export default App;

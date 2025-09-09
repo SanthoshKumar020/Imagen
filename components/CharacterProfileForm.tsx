@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { CharacterProfile, GenerationState, CanonImage } from '../types';
 import Card from './ui/Card';
@@ -6,9 +5,9 @@ import Label from './ui/Label';
 import Input from './ui/Input';
 import Textarea from './ui/Textarea';
 import Button from './ui/Button';
-// Fix: Import from geminiService instead of the legacy pollinationsService.
 import { generateCanonicalImage } from '../services/geminiService';
 import LoadingSpinner from './LoadingSpinner';
+import { useApiKey } from '../contexts/ApiKeyContext';
 
 interface CharacterProfileFormProps {
   profile: CharacterProfile;
@@ -17,6 +16,7 @@ interface CharacterProfileFormProps {
 
 const CharacterProfileForm: React.FC<CharacterProfileFormProps> = ({ profile, setProfile }) => {
   const [generationState, setGenerationState] = useState<GenerationState>({ status: 'idle', message: '' });
+  const { apiKey } = useApiKey();
   const isLoading = generationState.status === 'loading';
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -28,7 +28,7 @@ const CharacterProfileForm: React.FC<CharacterProfileFormProps> = ({ profile, se
   const handleGenerateAvatar = async () => {
     setGenerationState({ status: 'loading', message: 'Generating avatar...' });
     try {
-      const imageUrl = await generateCanonicalImage(profile.name);
+      const imageUrl = await generateCanonicalImage(profile.name, apiKey);
       const newAvatar: CanonImage = {
         id: `avatar-${Date.now()}`,
         name: 'AI Avatar',
@@ -39,7 +39,11 @@ const CharacterProfileForm: React.FC<CharacterProfileFormProps> = ({ profile, se
       setGenerationState({ status: 'idle', message: '' });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to generate avatar.';
-      setGenerationState({ status: 'error', message });
+      let displayMessage = message;
+      if (message.includes("quota exceeded")) {
+        displayMessage = `${message} You can add your own API key in the settings (top right icon).`;
+      }
+      setGenerationState({ status: 'error', message: displayMessage });
     }
   };
 
@@ -114,7 +118,7 @@ const CharacterProfileForm: React.FC<CharacterProfileFormProps> = ({ profile, se
                 <div className="relative group">
                     <img src={profile.aiModelImage.url} alt="AI Avatar" className="rounded-lg w-full aspect-[3/4] object-cover" />
                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-2">
-                        <Button onClick={handleGenerateAvatar} disabled={isLoading}>
+                        <Button onClick={handleGenerateAvatar} disabled={isLoading || !apiKey}>
                             {isLoading ? <LoadingSpinner /> : 'Regenerate'}
                         </Button>
                         <Button onClick={removeAvatar} className="bg-red-600 hover:bg-red-500">
@@ -125,7 +129,7 @@ const CharacterProfileForm: React.FC<CharacterProfileFormProps> = ({ profile, se
             ) : (
                 <div className="bg-gray-700/50 rounded-lg p-4 text-center">
                     <p className="text-gray-400 mb-4">No AI Avatar generated yet.</p>
-                    <Button onClick={handleGenerateAvatar} disabled={isLoading} className="w-full">
+                    <Button onClick={handleGenerateAvatar} disabled={isLoading || !apiKey} className="w-full">
                         {isLoading ? <LoadingSpinner message={generationState.message} /> : 'Generate Avatar'}
                     </Button>
                 </div>

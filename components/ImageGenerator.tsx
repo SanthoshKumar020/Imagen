@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { CharacterProfile, GeneratedAsset, AssetType, GenerationState, CanonImage } from '../types';
 import { DEFAULT_IMAGE_PROMPT, SUPPORTED_ASPECT_RATIOS, REALISM_BOOST_PROMPT } from '../constants';
@@ -11,6 +10,7 @@ import LoadingSpinner from './LoadingSpinner';
 import Select from './ui/Select';
 import Toggle from './ui/Toggle';
 import PromptSuggestions from './PromptSuggestions';
+import { useApiKey } from '../contexts/ApiKeyContext';
 
 // Fix: Updated icon components to accept and spread SVG props like className.
 const UploadIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
@@ -52,6 +52,7 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({ profile, addAsset, upda
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const { apiKey } = useApiKey();
   
   const allSelectableRefs = [
       ...(profile.aiModelImage ? [profile.aiModelImage] : []),
@@ -132,22 +133,40 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({ profile, addAsset, upda
       }
       e.target.value = '';
   };
-
+  
   const handleEnhancePrompt = async () => {
-    if (!prompt) return;
+    if (!prompt || !apiKey) return;
     setIsEnhancing(true);
+    setGenerationState({ status: 'idle', message: '' });
     try {
-      const enhanced = await enhancePrompt(prompt);
+      const enhanced = await enhancePrompt(prompt, apiKey);
       setPrompt(enhanced);
     } catch (error) {
        const message = error instanceof Error ? error.message : 'Failed to enhance prompt.';
-       setGenerationState({ status: 'error', message });
+       let displayMessage = message;
+       if (message.includes("quota exceeded")) {
+         displayMessage = `${message} You can add your own API key in the settings (top right icon).`;
+       }
+       setGenerationState({ status: 'error', message: displayMessage });
     } finally {
       setIsEnhancing(false);
     }
   };
+  
+  const handleError = (error: unknown, defaultMessage: string) => {
+    const message = error instanceof Error ? error.message : defaultMessage;
+    let displayMessage = message;
+    if (message.includes("quota exceeded")) {
+      displayMessage = `${message} You can add your own API key in the settings (top right icon).`;
+    }
+    setGenerationState({ status: 'error', message: displayMessage });
+  }
 
   const generate = async (currentPrompt: string) => {
+    if (!apiKey) {
+        setGenerationState({ status: 'error', message: 'API Key is missing. Please add one in settings.'});
+        return;
+    }
     setGenerationState({ status: 'loading', message: 'Generating image...' });
     setLastGeneratedAsset(null);
 
@@ -192,11 +211,11 @@ Your primary, non-negotiable objective is to generate a new image of the **exact
             img2imgPrompt += `\n\n${REALISM_BOOST_PROMPT}`;
         }
         
-        imageUrl = await editImage(img2imgPrompt, imagePayload);
+        imageUrl = await editImage(img2imgPrompt, imagePayload, apiKey);
 
       } else {
         // Text-to-Image Mode
-        imageUrl = await generateStillImage(finalPrompt, aspectRatio);
+        imageUrl = await generateStillImage(finalPrompt, aspectRatio, apiKey);
       }
 
       const newAsset: GeneratedAsset = {
@@ -210,8 +229,7 @@ Your primary, non-negotiable objective is to generate a new image of the **exact
       setLastGeneratedAsset(newAsset);
       setGenerationState({ status: 'idle', message: '' });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Image generation failed.';
-      setGenerationState({ status: 'error', message });
+      handleError(error, 'Image generation failed.');
     }
   };
 
@@ -220,16 +238,15 @@ Your primary, non-negotiable objective is to generate a new image of the **exact
   };
   
   const handleUpscale = async () => {
-    if (!lastGeneratedAsset) return;
+    if (!lastGeneratedAsset || !apiKey) return;
     setIsUpscaling(true);
     setGenerationState({ status: 'loading', message: 'Upscaling...' });
     try {
-        const upscaledUrl = await upscaleImage(lastGeneratedAsset.url.split(',')[1]);
+        const upscaledUrl = await upscaleImage(lastGeneratedAsset.url.split(',')[1], apiKey);
         updateAsset(lastGeneratedAsset.id, upscaledUrl);
         setGenerationState({ status: 'idle', message: '' });
     } catch (error) {
-        const message = error instanceof Error ? error.message : 'Upscale failed.';
-        setGenerationState({ status: 'error', message });
+        handleError(error, 'Upscale failed.');
     } finally {
         setIsUpscaling(false);
     }
@@ -258,7 +275,7 @@ Your primary, non-negotiable objective is to generate a new image of the **exact
                 </Button>
                 <Button
                   onClick={handleEnhancePrompt}
-                  disabled={isEnhancing || !prompt.trim()}
+                  disabled={isEnhancing || !prompt.trim() || !apiKey}
                   className="px-2 py-1 text-xs"
                   aria-label="Enhance image prompt"
                 >
@@ -363,12 +380,12 @@ Your primary, non-negotiable objective is to generate a new image of the **exact
             <Toggle label="Photorealism Boost" enabled={realismBoost} onChange={setRealismBoost} />
         </div>
         <div className="flex items-center space-x-2">
-          <Button onClick={handleGenerate} disabled={isLoading} className="w-full">
+          <Button onClick={handleGenerate} disabled={isLoading || !apiKey} className="w-full">
             {isLoading && generationState.message === 'Generating image...' ? <LoadingSpinner message="Generating..." /> : 'Generate Image'}
           </Button>
           <Button
             onClick={handleUpscale}
-            disabled={isUpscaling || !lastGeneratedAsset || isLoading}
+            disabled={isUpscaling || !lastGeneratedAsset || isLoading || !apiKey}
             className="w-full bg-green-600 hover:bg-green-500 disabled:bg-gray-600"
           >
             {isUpscaling ? <LoadingSpinner message="Upscaling..." /> : 'Upscale Last ✨'}

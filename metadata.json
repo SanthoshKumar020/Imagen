@@ -1,0 +1,5 @@
+{
+  "name": "AI Influencer Studio",
+  "description": "A web application to create and manage a fictional AI influencer. Generate consistent, high-quality images and videos using generative AI, based on a canonical character profile.",
+  "requestFramePermissions": []
+}

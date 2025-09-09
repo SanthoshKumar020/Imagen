@@ -1,13 +1,13 @@
 import React, { useState, useRef } from 'react';
-import { CharacterProfile, GenerationState, CanonImage } from '../types';
+import { CharacterProfile, CanonImage } from '../types';
 import Card from './ui/Card';
 import Label from './ui/Label';
 import Input from './ui/Input';
 import Textarea from './ui/Textarea';
 import Button from './ui/Button';
-import { generateCanonicalImage } from '../services/geminiService';
-import LoadingSpinner from './LoadingSpinner';
 import { useApiKey } from '../contexts/ApiKeyContext';
+import { createGroupPhoto } from '../services/geminiService';
+import LoadingSpinner from './LoadingSpinner';
 
 interface CharacterProfileFormProps {
   profile: CharacterProfile;
@@ -15,40 +15,114 @@ interface CharacterProfileFormProps {
 }
 
 const CharacterProfileForm: React.FC<CharacterProfileFormProps> = ({ profile, setProfile }) => {
-  const [generationState, setGenerationState] = useState<GenerationState>({ status: 'idle', message: '' });
   const { apiKey } = useApiKey();
-  const isLoading = generationState.status === 'loading';
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const canonFileInputRef = useRef<HTMLInputElement>(null);
+  const groupPhotoFileInputRef = useRef<HTMLInputElement>(null);
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
+  
+  const [groupImages, setGroupImages] = useState<CanonImage[]>([]);
+  const [isCreating, setIsCreating] = useState(false);
+  const [groupError, setGroupError] = useState('');
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setProfile(prev => ({ ...prev, [name]: name === 'age' ? parseInt(value) || 0 : value }));
   };
-
-  const handleGenerateAvatar = async () => {
-    setGenerationState({ status: 'loading', message: 'Generating avatar...' });
-    try {
-      const imageUrl = await generateCanonicalImage(profile.name, apiKey);
-      const newAvatar: CanonImage = {
-        id: `avatar-${Date.now()}`,
-        name: 'AI Avatar',
-        base64: imageUrl.split(',')[1], // Assuming data URL
-        url: imageUrl,
-      };
-      setProfile(prev => ({ ...prev, aiModelImage: newAvatar }));
-      setGenerationState({ status: 'idle', message: '' });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to generate avatar.';
-      let displayMessage = message;
-      if (message.includes("quota exceeded")) {
-        displayMessage = `${message} You can add your own API key in the settings (top right icon).`;
-      }
-      setGenerationState({ status: 'error', message: displayMessage });
-    }
-  };
-
+  
   const removeAvatar = () => {
     setProfile(prev => ({ ...prev, aiModelImage: null }));
+  };
+
+  const handleAvatarUploadClick = () => {
+    avatarFileInputRef.current?.click();
+  };
+
+  const handleAvatarFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const result = reader.result as string;
+            const newAvatar: CanonImage = {
+                id: `avatar-upload-${Date.now()}`,
+                name: file.name,
+                base64: result.split(',')[1],
+                url: result,
+            };
+            setProfile(prev => ({ ...prev, aiModelImage: newAvatar }));
+        };
+        reader.readAsDataURL(file);
+    }
+    e.target.value = '';
+  };
+
+  const handleGroupPhotoUploadClick = () => {
+    groupPhotoFileInputRef.current?.click();
+  };
+
+  const handleGroupPhotoFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (files) {
+          const newImages: CanonImage[] = [];
+          const remainingSlots = 10 - groupImages.length;
+          const filesToProcess = Array.from(files).slice(0, remainingSlots);
+
+          filesToProcess.forEach(file => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                  const result = reader.result as string;
+                  const newImage: CanonImage = {
+                      id: `group-upload-${Date.now()}-${file.name}`,
+                      name: file.name,
+                      base64: result.split(',')[1],
+                      url: result,
+                  };
+                  newImages.push(newImage);
+                  if (newImages.length === filesToProcess.length) {
+                      setGroupImages(prev => [...prev, ...newImages]);
+                  }
+              };
+              reader.readAsDataURL(file);
+          });
+      }
+      e.target.value = '';
+  };
+
+  const removeGroupImage = (id: string) => {
+    setGroupImages(prev => prev.filter(img => img.id !== id));
+  };
+
+  const handleCreateGroupPhoto = async () => {
+    if (!apiKey || groupImages.length < 2) {
+        setGroupError("Please upload 2-10 images to create a group photo.");
+        return;
+    }
+    setIsCreating(true);
+    setGroupError('');
+    try {
+        const imagePayload = groupImages.map(img => ({
+            base64: img.base64,
+            mimeType: img.url.match(/:(.*?);/)?.[1] || 'image/jpeg'
+        }));
+        
+        const groupImageUrl = await createGroupPhoto(imagePayload, apiKey);
+        
+        const newGroupImage: CanonImage = {
+            id: `group-photo-${Date.now()}`,
+            name: 'Group Photo',
+            base64: groupImageUrl.split(',')[1],
+            url: groupImageUrl,
+        };
+
+        setProfile(prev => ({ ...prev, canonImages: [...prev.canonImages, newGroupImage] }));
+        setGroupImages([]);
+
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to create group photo.';
+        setGroupError(message);
+    } finally {
+        setIsCreating(false);
+    }
   };
   
   const removeCanonImage = (id: string) => {
@@ -58,11 +132,11 @@ const CharacterProfileForm: React.FC<CharacterProfileFormProps> = ({ profile, se
     }));
   }
 
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
+  const handleCanonUploadClick = () => {
+    canonFileInputRef.current?.click();
   };
 
-  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCanonFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
           const reader = new FileReader();
@@ -78,7 +152,6 @@ const CharacterProfileForm: React.FC<CharacterProfileFormProps> = ({ profile, se
           };
           reader.readAsDataURL(file);
       }
-      // Reset file input to allow uploading the same file again
       e.target.value = '';
   };
 
@@ -107,19 +180,19 @@ const CharacterProfileForm: React.FC<CharacterProfileFormProps> = ({ profile, se
              <div>
               <Label htmlFor="description">Physical Description</Label>
               <Textarea id="description" name="description" value={profile.description} onChange={handleChange} rows={4} />
-              <p className="text-xs text-gray-500 mt-1">Used to generate the AI Avatar and maintain consistency.</p>
+              <p className="text-xs text-gray-500 mt-1">Used to maintain consistency in image editing.</p>
             </div>
         </div>
 
         <div>
-            <h3 className="text-md font-semibold text-gray-200 mb-2">AI Avatar</h3>
-            <p className="text-xs text-gray-500 mb-3">The persistent, canonical model for your influencer.</p>
+            <h3 className="text-md font-semibold text-gray-200 mb-2">Primary Character Image</h3>
+             <p className="text-xs text-gray-500 mb-3">The main image for your influencer. This is required for editing.</p>
             {profile.aiModelImage ? (
                 <div className="relative group">
                     <img src={profile.aiModelImage.url} alt="AI Avatar" className="rounded-lg w-full aspect-[3/4] object-cover" />
                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-2">
-                        <Button onClick={handleGenerateAvatar} disabled={isLoading || !apiKey}>
-                            {isLoading ? <LoadingSpinner /> : 'Regenerate'}
+                        <Button onClick={handleAvatarUploadClick}>
+                            Replace
                         </Button>
                         <Button onClick={removeAvatar} className="bg-red-600 hover:bg-red-500">
                             Remove
@@ -127,13 +200,42 @@ const CharacterProfileForm: React.FC<CharacterProfileFormProps> = ({ profile, se
                     </div>
                 </div>
             ) : (
-                <div className="bg-gray-700/50 rounded-lg p-4 text-center">
-                    <p className="text-gray-400 mb-4">No AI Avatar generated yet.</p>
-                    <Button onClick={handleGenerateAvatar} disabled={isLoading || !apiKey} className="w-full">
-                        {isLoading ? <LoadingSpinner message={generationState.message} /> : 'Generate Avatar'}
-                    </Button>
-                </div>
+                <Button onClick={handleAvatarUploadClick} className="w-full bg-gray-600 hover:bg-gray-500">
+                    Upload Primary Image
+                </Button>
             )}
+        </div>
+        
+        <div className="space-y-4 p-4 border border-dashed border-gray-600 rounded-lg bg-gray-800/30">
+          <h3 className="text-md font-semibold text-blue-300">Group Photo Creator</h3>
+          <p className="text-xs text-gray-400">Upload 2-10 photos of different people to create a single group photo.</p>
+          
+          {groupImages.length > 0 && (
+            <div className="grid grid-cols-5 gap-2">
+              {groupImages.map(img => (
+                <div key={img.id} className="relative group aspect-square">
+                  <img src={img.url} alt={img.name} className="rounded-md w-full h-full object-cover" />
+                  <button 
+                    onClick={() => removeGroupImage(img.id)}
+                    className="absolute -top-1 -right-1 bg-red-600/90 hover:bg-red-500 text-white rounded-full h-5 w-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-all"
+                    aria-label="Remove image"
+                  >
+                    &times;
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
+            <Button onClick={handleGroupPhotoUploadClick} className="w-full bg-gray-600 hover:bg-gray-500 text-sm" disabled={groupImages.length >= 10}>
+              Upload Photos ({groupImages.length}/10)
+            </Button>
+            <Button onClick={handleCreateGroupPhoto} className="w-full text-sm" disabled={isCreating || groupImages.length < 2}>
+              {isCreating ? <LoadingSpinner message="Creating..." /> : 'Create Group Photo'}
+            </Button>
+          </div>
+          {groupError && <p className="text-xs text-center text-red-400 mt-2">{groupError}</p>}
         </div>
 
         <div>
@@ -155,21 +257,33 @@ const CharacterProfileForm: React.FC<CharacterProfileFormProps> = ({ profile, se
                     ))}
                 </div>
             )}
-            <Button onClick={handleUploadClick} disabled={isLoading} className="w-full bg-gray-600 hover:bg-gray-500">
+            <Button onClick={handleCanonUploadClick} className="w-full bg-gray-600 hover:bg-gray-500">
                 Upload Image
             </Button>
+             <input
+                type="file"
+                ref={groupPhotoFileInputRef}
+                onChange={handleGroupPhotoFileSelected}
+                className="hidden"
+                accept="image/png, image/jpeg"
+                multiple
+            />
             <input
                 type="file"
-                ref={fileInputRef}
-                onChange={handleFileSelected}
+                ref={canonFileInputRef}
+                onChange={handleCanonFileSelected}
+                className="hidden"
+                accept="image/png, image/jpeg"
+            />
+            <input
+                type="file"
+                ref={avatarFileInputRef}
+                onChange={handleAvatarFileSelected}
                 className="hidden"
                 accept="image/png, image/jpeg"
             />
         </div>
         
-        {generationState.status === 'error' && (
-          <p className="mt-2 text-sm text-red-400 text-center">{generationState.message}</p>
-        )}
       </div>
     </Card>
   );

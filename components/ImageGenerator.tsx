@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { CharacterProfile, GeneratedAsset, AssetType, GenerationState, CanonImage } from '../types';
 import { DEFAULT_IMAGE_PROMPT, SUPPORTED_ASPECT_RATIOS, REALISM_BOOST_PROMPT } from '../constants';
-import { generateStillImage, enhancePrompt, editImage, upscaleImage } from '../services/geminiService';
+import { enhancePrompt, editImage, upscaleImage } from '../services/geminiService';
 import Card from './ui/Card';
 import Label from './ui/Label';
 import Textarea from './ui/Textarea';
@@ -59,6 +59,8 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({ profile, addAsset, upda
       ...profile.canonImages.filter(img => img.id !== profile.aiModelImage?.id),
       ...localRefs
   ];
+  
+  const contentRef = allSelectableRefs.find(ref => ref.id === contentRefId);
 
   useEffect(() => {
     setPrompt(DEFAULT_IMAGE_PROMPT.replace(/{name}/g, profile.name || 'character'));
@@ -83,6 +85,12 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({ profile, addAsset, upda
   const handleSetStyleRef = (id: string) => {
     setStyleRefId(prevId => (prevId === id ? null : id));
     if (contentRefId === id) setContentRefId(null);
+  };
+
+  const removeLocalRef = (id: string) => {
+    setLocalRefs(prev => prev.filter(ref => ref.id !== id));
+    if (contentRefId === id) setContentRefId(null);
+    if (styleRefId === id) setStyleRefId(null);
   };
 
   const handleFileDrop = (files: FileList) => {
@@ -167,56 +175,47 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({ profile, addAsset, upda
         setGenerationState({ status: 'error', message: 'API Key is missing. Please add one in settings.'});
         return;
     }
-    setGenerationState({ status: 'loading', message: 'Generating image...' });
+
+    if (!contentRef) {
+        setGenerationState({ status: 'error', message: 'Please select a "Content" reference image to edit.' });
+        return;
+    }
+    setGenerationState({ status: 'loading', message: 'Editing image...' });
     setLastGeneratedAsset(null);
 
-    const contentRef = allSelectableRefs.find(ref => ref.id === contentRefId);
     const styleRef = allSelectableRefs.find(ref => ref.id === styleRefId);
 
     try {
-      let finalPrompt = `${profile.description}\n\n${currentPrompt.replace(/{name}/g, profile.name)}`;
-      if (realismBoost) {
-        finalPrompt += `\n\n${REALISM_BOOST_PROMPT}`;
-      }
+      let img2imgPrompt: string;
+      let imagePayload: {base64: string, mimeType: string}[] = [];
       
-      let imageUrl: string;
-
-      if (contentRef) {
-        let imagePayload: {base64: string, mimeType: string}[] = [];
-        let img2imgPrompt = '';
-
-        if (styleRef) {
-            // Style Transfer Mode
-            imagePayload = [
-                { base64: contentRef.base64, mimeType: contentRef.url.match(/:(.*?);/)?.[1] || 'image/jpeg' },
-                { base64: styleRef.base64, mimeType: styleRef.url.match(/:(.*?);/)?.[1] || 'image/jpeg' }
-            ];
-            img2imgPrompt = `**STYLE TRANSFER MISSION:** Your task is to meticulously apply the artistic style, color palette, and texture from the second image (the 'Style' reference) onto the first image (the 'Content' reference). Preserve the core subject, composition, and identity of the person in the 'Content' image, but render it entirely in the aesthetic of the 'Style' image. Do not blend the subjects. The person from the 'Content' image must be recognizable but artistically transformed. The user's text prompt provides additional context for the scene.
-            
+      if (styleRef) {
+          // Style Transfer Mode
+          imagePayload = [
+              { base64: contentRef.base64, mimeType: contentRef.url.match(/:(.*?);/)?.[1] || 'image/jpeg' },
+              { base64: styleRef.base64, mimeType: styleRef.url.match(/:(.*?);/)?.[1] || 'image/jpeg' }
+          ];
+          img2imgPrompt = `**STYLE TRANSFER MISSION:** Your task is to meticulously apply the artistic style, color palette, and texture from the second image (the 'Style' reference) onto the first image (the 'Content' reference). Preserve the core subject, composition, and identity of the person in the 'Content' image, but render it entirely in the aesthetic of the 'Style' image. Do not blend the subjects. The person from the 'Content' image must be recognizable but artistically transformed. The user's text prompt provides additional context for the scene.
+          
 User's Creative Request: "${currentPrompt}"`;
 
-        } else {
-            // Character Consistency Mode
-            imagePayload = [{ base64: contentRef.base64, mimeType: contentRef.url.match(/:(.*?);/)?.[1] || 'image/jpeg' }];
-            img2imgPrompt = `**CRITICAL MISSION: HYPER-REALISTIC CHARACTER CONSISTENCY.**
+      } else {
+          // Character Consistency Mode
+          imagePayload = [{ base64: contentRef.base64, mimeType: contentRef.url.match(/:(.*?);/)?.[1] || 'image/jpeg' }];
+          img2imgPrompt = `**CRITICAL MISSION: HYPER-REALISTIC CHARACTER CONSISTENCY.**
 Your primary, non-negotiable objective is to generate a new image of the **exact same person** shown in the provided reference image. Analyze the image to understand the consistent facial structure, features, skin tone, and unique identity. This identity is paramount and must be preserved with 100% accuracy.
 
 - **Reference Image:** This depicts the individual. Use it as the absolute ground truth for the person's face and appearance.
 - **User's Creative Request:** This describes the new scene, pose, lighting, and outfit for this person.
 
 **User's Creative Request:** "${currentPrompt}"`;
-        }
-
-        if (realismBoost) {
-            img2imgPrompt += `\n\n${REALISM_BOOST_PROMPT}`;
-        }
-        
-        imageUrl = await editImage(img2imgPrompt, imagePayload, apiKey);
-
-      } else {
-        // Text-to-Image Mode
-        imageUrl = await generateStillImage(finalPrompt, aspectRatio, apiKey);
       }
+
+      if (realismBoost) {
+          img2imgPrompt += `\n\n${REALISM_BOOST_PROMPT}`;
+      }
+      
+      const imageUrl = await editImage(img2imgPrompt, imagePayload, apiKey);
 
       const newAsset: GeneratedAsset = {
         id: `img-${Date.now()}`,
@@ -229,7 +228,7 @@ Your primary, non-negotiable objective is to generate a new image of the **exact
       setLastGeneratedAsset(newAsset);
       setGenerationState({ status: 'idle', message: '' });
     } catch (error) {
-      handleError(error, 'Image generation failed.');
+      handleError(error, 'Image editing failed.');
     }
   };
 
@@ -264,7 +263,7 @@ Your primary, non-negotiable objective is to generate a new image of the **exact
       <div className="space-y-4">
         <div>
           <div className="flex justify-between items-center mb-1">
-            <Label htmlFor="image-prompt" className="mb-0">Prompt</Label>
+            <Label htmlFor="image-prompt" className="mb-0">Prompt (Editing Instructions)</Label>
             <div className="flex items-center space-x-2">
                 <Button
                   onClick={() => setShowSuggestions(!showSuggestions)}
@@ -290,14 +289,6 @@ Your primary, non-negotiable objective is to generate a new image of the **exact
            )}
           <Textarea id="image-prompt" value={prompt} onChange={e => setPrompt(e.target.value)} rows={6} />
         </div>
-        <div>
-          <Label>Aspect Ratio</Label>
-          <Select value={aspectRatio} onChange={e => setAspectRatio(e.target.value)}>
-            {SUPPORTED_ASPECT_RATIOS.map(ratio => (
-              <option key={ratio} value={ratio}>{ratio}</option>
-            ))}
-          </Select>
-        </div>
         
         <div 
             onDragEnter={handleDragEnter}
@@ -322,6 +313,7 @@ Your primary, non-negotiable objective is to generate a new image of the **exact
                         const isAvatar = profile.aiModelImage?.id === img.id;
                         const isContent = contentRefId === img.id;
                         const isStyle = styleRefId === img.id;
+                        const isLocal = img.id.startsWith('local-');
                         let borderColor = 'border-transparent hover:border-gray-500';
                         if (isContent) borderColor = 'border-blue-500';
                         else if (isStyle) borderColor = 'border-purple-500';
@@ -345,7 +337,16 @@ Your primary, non-negotiable objective is to generate a new image of the **exact
                                         <SparklesIcon />
                                     </button>
                                 </div>
-                                {isAvatar && <div className="absolute top-1 left-1 p-0.5 bg-yellow-400 rounded-full text-black" title="AI Avatar"><StarIcon filled={true} className="w-4 h-4"/></div>}
+                                {isLocal && (
+                                  <button
+                                    onClick={() => removeLocalRef(img.id)}
+                                    className="absolute -top-1.5 -right-1.5 bg-red-600/90 hover:bg-red-500 text-white rounded-full h-5 w-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-all z-10"
+                                    aria-label="Remove local reference"
+                                  >
+                                    &times;
+                                  </button>
+                                )}
+                                {isAvatar && <div className="absolute top-1 left-1 p-0.5 bg-yellow-400 rounded-full text-black" title="Primary Character Image"><StarIcon filled={true} className="w-4 h-4"/></div>}
                                 {isContent && <div className="absolute bottom-1 left-1 p-1.5 bg-blue-500 rounded-full text-white" title="Content Reference"><UserIcon /></div>}
                                 {isStyle && <div className="absolute bottom-1 right-1 p-1.5 bg-purple-500 rounded-full text-white" title="Style Reference"><SparklesIcon /></div>}
                             </div>
@@ -370,7 +371,7 @@ Your primary, non-negotiable objective is to generate a new image of the **exact
                 multiple
             />
             <p className="text-xs text-gray-500 mt-2 flex items-center gap-x-3 gap-y-1 flex-wrap">
-                <span className="flex items-center gap-1"><StarIcon className="w-3 h-3 text-yellow-400" filled/> <span className="font-semibold">Avatar</span></span>
+                <span className="flex items-center gap-1"><StarIcon className="w-3 h-3 text-yellow-400" filled/> <span className="font-semibold">Primary</span></span>
                 <span className="flex items-center gap-1"><UserIcon className="w-3 h-3 text-blue-400"/> <span className="font-semibold">Content</span></span>
                 <span className="flex items-center gap-1"><SparklesIcon className="w-3 h-3 text-purple-400"/> <span className="font-semibold">Style</span></span>
             </p>
@@ -379,17 +380,29 @@ Your primary, non-negotiable objective is to generate a new image of the **exact
         <div className="pt-2">
             <Toggle label="Photorealism Boost" enabled={realismBoost} onChange={setRealismBoost} />
         </div>
-        <div className="flex items-center space-x-2">
-          <Button onClick={handleGenerate} disabled={isLoading || !apiKey} className="w-full">
-            {isLoading && generationState.message === 'Generating image...' ? <LoadingSpinner message="Generating..." /> : 'Generate Image'}
-          </Button>
-          <Button
-            onClick={handleUpscale}
-            disabled={isUpscaling || !lastGeneratedAsset || isLoading || !apiKey}
-            className="w-full bg-green-600 hover:bg-green-500 disabled:bg-gray-600"
-          >
-            {isUpscaling ? <LoadingSpinner message="Upscaling..." /> : 'Upscale Last ✨'}
-          </Button>
+        <div className="flex flex-col">
+            <div className="flex items-center space-x-2">
+              <Button 
+                onClick={handleGenerate} 
+                disabled={isLoading || !apiKey || !contentRef} 
+                className="w-full"
+                title={!contentRef ? "Select a Content reference image to enable" : "Generate an edit based on your prompt and references"}
+              >
+                {isLoading && generationState.message.includes('Editing') ? <LoadingSpinner message="Editing..." /> : 'Generate Edit'}
+              </Button>
+              <Button
+                onClick={handleUpscale}
+                disabled={isUpscaling || !lastGeneratedAsset || isLoading || !apiKey}
+                className="w-full bg-green-600 hover:bg-green-500 disabled:bg-gray-600"
+              >
+                {isUpscaling ? <LoadingSpinner message="Upscaling..." /> : 'Upscale Last ✨'}
+              </Button>
+            </div>
+            {!contentRef && (
+                <p className="mt-2 text-xs text-center text-gray-500">
+                    Please select a <span className="text-blue-400 font-semibold">Content</span> reference to start editing.
+                </p>
+            )}
         </div>
         {generationState.status === 'error' && (
             <p className="mt-2 text-sm text-red-400 text-center">{generationState.message}</p>

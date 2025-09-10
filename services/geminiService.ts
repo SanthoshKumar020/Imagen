@@ -21,7 +21,7 @@ const parseGeminiError = (error: unknown): string => {
     }
 
     if (isQuotaError(error)) {
-        return "API quota exceeded. Please check your plan and billing details, or try again in a few moments.";
+        return "You've exceeded the free tier quota for your API key. To continue, please enable billing on your Google Cloud project associated with this key. This will grant you higher usage limits.";
     }
     
     if (apiError && apiError.message) {

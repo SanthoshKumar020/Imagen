@@ -18,6 +18,7 @@ export interface CanonImage {
 
 export enum AssetType {
   Image = 'image',
+  Video = 'video',
 }
 
 export interface GeneratedAsset {
@@ -26,6 +27,7 @@ export interface GeneratedAsset {
   url: string;
   prompt: string;
   createdAt: string;
+  isFavorite?: boolean;
 }
 
 export interface GenerationState {

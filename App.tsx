@@ -1,8 +1,10 @@
+
 import React, { useState, useCallback } from 'react';
 import { CharacterProfile, GeneratedAsset } from './types';
 import Header from './components/Header';
 import CharacterProfileForm from './components/CharacterProfileForm';
 import ImageGenerator from './components/ImageGenerator';
+import VideoGenerator from './components/VideoGenerator';
 import AssetGallery from './components/AssetGallery';
 import { ApiKeyProvider } from './contexts/ApiKeyContext';
 
@@ -43,6 +45,14 @@ const AppContent: React.FC = () => {
     );
   }, []);
 
+  const toggleFavoriteAsset = useCallback((assetId: string) => {
+    setGeneratedAssets(prevAssets =>
+      prevAssets.map(asset =>
+        asset.id === assetId ? { ...asset, isFavorite: !asset.isFavorite } : asset
+      )
+    );
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 font-sans">
       {showBanner && <InfoBanner onDismiss={() => setShowBanner(false)} />}
@@ -52,15 +62,20 @@ const AppContent: React.FC = () => {
           <CharacterProfileForm 
             profile={characterProfile} 
             setProfile={setCharacterProfile}
+            addAsset={addAsset}
           />
           <ImageGenerator 
             profile={characterProfile} 
             addAsset={addAsset} 
             updateAsset={updateAsset}
           />
+          <VideoGenerator
+            profile={characterProfile}
+            addAsset={addAsset}
+          />
         </aside>
         <section className="lg:col-span-8 xl:col-span-9">
-          <AssetGallery assets={generatedAssets} />
+          <AssetGallery assets={generatedAssets} toggleFavoriteAsset={toggleFavoriteAsset} />
         </section>
       </main>
     </div>

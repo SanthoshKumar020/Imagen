@@ -1,3 +1,4 @@
+
 // Fix: Import GoogleGenAI according to guidelines
 import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
 
@@ -15,9 +16,14 @@ const parseGeminiError = (error: unknown): string => {
     const apiError = (error as any)?.error;
     const errorMessage = apiError?.message || '';
 
-    // Check for the specific billing error first
-    if (typeof errorMessage === 'string' && errorMessage.includes("only accessible to billed users")) {
-        return "This action requires a premium API. To use it, please enable billing on your Google Cloud project and use a new API key from that project in the settings.";
+    // Check for specific, user-friendly messages first
+    if (typeof errorMessage === 'string') {
+        if (errorMessage.includes("API key not valid")) {
+            return "The provided API key is invalid. Please check the key and try again.";
+        }
+        if (errorMessage.includes("only accessible to billed users")) {
+            return "This action requires a premium API. To use it, please enable billing on your Google Cloud project and use a new API key from that project in the settings.";
+        }
     }
 
     if (isQuotaError(error)) {
@@ -43,6 +49,21 @@ const getClient = (apiKey: string) => {
 
 
 // --- Service Functions ---
+
+export const validateApiKey = async (apiKey: string): Promise<{isValid: boolean; error?: string}> => {
+    try {
+        const ai = getClient(apiKey);
+        // A very simple, fast request to check if the key is valid and has permissions.
+        await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: "test",
+            config: { thinkingConfig: { thinkingBudget: 0 } }
+        });
+        return { isValid: true };
+    } catch (error) {
+        return { isValid: false, error: parseGeminiError(error) };
+    }
+};
 
 export const enhancePrompt = async (prompt: string, apiKey: string): Promise<string> => {
     try {
@@ -118,14 +139,25 @@ export const createGroupPhoto = async (images: { base64: string, mimeType: strin
             },
         }));
 
-        const prompt = `**URGENT AI MISSION: GROUP PHOTO SYNTHESIS**
-You have been provided with ${images.length} images, each potentially of a different person. Your task is to create a single, new, cohesive, and hyper-realistic group photograph that includes **every single person** from the provided images.
-**CRITICAL RULES:**
-1.  **PRESERVE IDENTITY:** It is absolutely crucial that you maintain the exact facial features and identity of each individual from their respective source image. Do not alter their appearance.
-2.  **COHESIVE SCENE:** Place all individuals in a plausible shared environment (e.g., an outdoor park, a modern office lounge, a celebratory event). The lighting, shadows, and perspective must be consistent for everyone.
-3.  **NATURAL POSES:** Arrange the people in natural, interacting poses suitable for a group photo. Avoid stiff, copy-pasted appearances.
-4.  **PHOTOREALISM:** The final image must be indistinguishable from a real photograph. Pay extreme attention to skin texture, lighting, and details.
-5.  **OUTPUT IMAGE ONLY:** Your output must only be the final generated image. Do not include any text.`;
+        const prompt = `**CRITICAL MISSION: FLAWLESS, IDENTICAL-FACE GROUP PHOTO COMPOSITE**
+You are a precision tool for photorealistic image composition. You have been provided with ${images.length} separate images, each featuring one person. Your **only** task is to create a single, unified group photograph that places every person into a realistic, shared scene.
+
+**ABSOLUTE DIRECTIVE #1: ZERO FACIAL ALTERATION.**
+This is not a creative task. It is a technical reconstruction. The facial identity of each person is SACROSANCT.
+-   **DO NOT** change, alter, modify, blend, interpret, or 'enhance' any facial features. The goal is 100% IDENTICAL replication of each person's face from their source image.
+-   **CLONE, DO NOT CREATE.** Treat the faces as immutable data to be perfectly copied and placed.
+-   Scrutinize and replicate every detail: eye shape, nose bridge, jawline, skin texture, moles, freckles, and expression.
+-   The final image's success is judged SOLELY on whether each person is instantly and perfectly recognizable. Any deviation is a total failure.
+
+**SCENE & TECHNICAL GUIDELINES:**
+1.  **Unified Scene:** Place all individuals into a single, plausible environment (e.g., a professionally lit studio, a scenic outdoor location, a modern interior).
+2.  **Coherent Lighting:** The lighting must be consistent across all subjects and match the environment. Shadows and highlights must be uniform and realistic.
+3.  **Natural Posing:** Arrange the individuals in a natural group composition. They must look like they are physically present in the same space together. Avoid a 'copy-paste' appearance.
+4.  **Photorealism:** The final composite must be indistinguishable from a real photograph. Ensure realistic skin textures, hair details, and clothing.
+
+**OUTPUT:**
+-   Produce the final image ONLY.
+-   No text, no descriptions, no apologies. Just the photorealistic group composite.`;
 
 
         const contents = {
@@ -157,6 +189,81 @@ You have been provided with ${images.length} images, each potentially of a diffe
         throw new Error(parseGeminiError(error));
     }
 };
+
+export const generateVideo = async (
+    prompt: string, 
+    image: { base64: string, mimeType: string } | null,
+    apiKey: string,
+    onProgress: (message: string) => void
+): Promise<string> => {
+    try {
+        const ai = getClient(apiKey);
+        onProgress("Initializing video request...");
+
+        const videoRequest: any = {
+            model: 'veo-2.0-generate-001',
+            prompt: prompt,
+            config: { numberOfVideos: 1 }
+        };
+
+        if (image) {
+            videoRequest.image = {
+                imageBytes: image.base64,
+                mimeType: image.mimeType,
+            };
+            const consistencyPrompt = `**CRITICAL DIRECTIVE: ABSOLUTE IDENTITY PRESERVATION.**
+The provided image contains the subject for this video. Your task is to animate this **EXACT PERSON**.
+- **FACE:** The facial structure, features, skin tone, and identity MUST remain identical to the reference image. This is a technical replication, not a creative interpretation. Any deviation in the face is a failure.
+- **CONTEXT:** The user's prompt below describes the scene, action, and mood for this person. Adhere to it while maintaining the subject's unwavering identity.
+---
+User Prompt: "${prompt}"`;
+            videoRequest.prompt = consistencyPrompt;
+        }
+        
+        let operation = await ai.models.generateVideos(videoRequest);
+        onProgress("AI is warming up...");
+
+        const progressInterval = 10000; // 10 seconds
+        while (!operation.done) {
+            await new Promise(resolve => setTimeout(resolve, progressInterval));
+            onProgress("Checking on your video's progress...");
+            try {
+                operation = await ai.operations.getVideosOperation({ operation: operation });
+            } catch (pollError) {
+                console.warn("Polling failed, but will retry.", pollError);
+                onProgress("Connection hiccup, retrying...");
+            }
+        }
+        onProgress("Finalizing video render...");
+
+        const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+        if (!downloadLink) {
+            throw new Error("Video generation completed, but no download link was found.");
+        }
+
+        onProgress("Downloading video...");
+        const response = await fetch(`${downloadLink}&key=${apiKey}`);
+        if (!response.ok) {
+            throw new Error(`Failed to download the generated video. Status: ${response.statusText}`);
+        }
+
+        const videoBlob = await response.blob();
+        
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                onProgress("Video ready!");
+                resolve(reader.result as string);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(videoBlob);
+        });
+
+    } catch (error) {
+        throw new Error(parseGeminiError(error));
+    }
+};
+
 
 export const upscaleImage = async (base64Image: string, apiKey: string): Promise<string> => {
     try {

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { CharacterProfile, GeneratedAsset, AssetType, GenerationState, CanonImage } from '../types';
 import { DEFAULT_IMAGE_PROMPT, SUPPORTED_ASPECT_RATIOS, REALISM_BOOST_PROMPT } from '../constants';
@@ -11,6 +12,7 @@ import Select from './ui/Select';
 import Toggle from './ui/Toggle';
 import PromptSuggestions from './PromptSuggestions';
 import { useApiKey } from '../contexts/ApiKeyContext';
+import VoiceInputButton from './ui/VoiceInputButton';
 
 // Fix: Updated icon components to accept and spread SVG props like className.
 const UploadIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
@@ -202,11 +204,13 @@ User's Creative Request: "${currentPrompt}"`;
       } else {
           // Character Consistency Mode
           imagePayload = [{ base64: contentRef.base64, mimeType: contentRef.url.match(/:(.*?);/)?.[1] || 'image/jpeg' }];
-          img2imgPrompt = `**CRITICAL MISSION: HYPER-REALISTIC CHARACTER CONSISTENCY.**
-Your primary, non-negotiable objective is to generate a new image of the **exact same person** shown in the provided reference image. Analyze the image to understand the consistent facial structure, features, skin tone, and unique identity. This identity is paramount and must be preserved with 100% accuracy.
+          img2imgPrompt = `**CRITICAL MISSION: PERFECT FACIAL IDENTITY PRESERVATION.**
+Your PRIMARY and NON-NEGOTIABLE objective is to generate a new image featuring the **IDENTICAL PERSON** from the provided reference image. The user's creative request for a new scene is entirely secondary to this core directive.
 
-- **Reference Image:** This depicts the individual. Use it as the absolute ground truth for the person's face and appearance.
-- **User's Creative Request:** This describes the new scene, pose, lighting, and outfit for this person.
+-   **IDENTITY IS PARAMOUNT:** You must perfectly replicate the person's unique facial structure, features (eyes, nose, mouth), skin tone, and distinguishing marks. Treat the reference face as immutable ground truth.
+-   **ZERO ARTISTIC LICENSE:** Do not alter, 'enhance', or interpret the subject's face. Your task is a technical replication of the person in a new context, not a creative reimagining.
+-   **REFERENCE ANALYSIS:** The provided image is your sole reference for the person's identity. Use it as the absolute ground truth.
+-   **USER'S SCENE REQUEST:** The user's prompt below describes the new scene, pose, lighting, and outfit for this **exact person**.
 
 **User's Creative Request:** "${currentPrompt}"`;
       }
@@ -255,6 +259,10 @@ Your primary, non-negotiable objective is to generate a new image of the **exact
     setPrompt(selectedPrompt);
     setShowSuggestions(false);
   };
+  
+  const handleTranscript = (transcript: string) => {
+    setPrompt(prev => (prev.endsWith(' ') ? prev : prev + ' ') + transcript);
+  };
 
   const isLoading = generationState.status === 'loading';
 
@@ -287,7 +295,10 @@ Your primary, non-negotiable objective is to generate a new image of the **exact
               <PromptSuggestions profile={profile} onSelectPrompt={handleSelectPrompt} />
             </div>
            )}
-          <Textarea id="image-prompt" value={prompt} onChange={e => setPrompt(e.target.value)} rows={6} />
+          <div className="relative">
+             <Textarea id="image-prompt" value={prompt} onChange={e => setPrompt(e.target.value)} rows={6} className="pr-10" />
+             <VoiceInputButton onTranscript={handleTranscript} disabled={isLoading} />
+          </div>
         </div>
         
         <div 

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { CharacterProfile, CanonImage } from '../types';
+import { CharacterProfile, CanonImage, GeneratedAsset, AssetType } from '../types';
 import Card from './ui/Card';
 import Label from './ui/Label';
 import Input from './ui/Input';
@@ -12,9 +12,24 @@ import LoadingSpinner from './LoadingSpinner';
 interface CharacterProfileFormProps {
   profile: CharacterProfile;
   setProfile: React.Dispatch<React.SetStateAction<CharacterProfile>>;
+  addAsset: (asset: GeneratedAsset) => void;
 }
 
-const CharacterProfileForm: React.FC<CharacterProfileFormProps> = ({ profile, setProfile }) => {
+const Accordion: React.FC<{title: string, children: React.ReactNode, defaultOpen?: boolean}> = ({ title, children, defaultOpen = false }) => (
+    <details className="border-t border-gray-700 py-3" open={defaultOpen}>
+        <summary className="font-semibold text-gray-200 cursor-pointer list-none flex justify-between items-center">
+            <span>{title}</span>
+            <span className="text-gray-500 transition-transform transform details-open:rotate-90">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            </span>
+        </summary>
+        <div className="mt-4">
+            {children}
+        </div>
+    </details>
+);
+
+const CharacterProfileForm: React.FC<CharacterProfileFormProps> = ({ profile, setProfile, addAsset }) => {
   const { apiKey } = useApiKey();
   const canonFileInputRef = useRef<HTMLInputElement>(null);
   const groupPhotoFileInputRef = useRef<HTMLInputElement>(null);
@@ -107,14 +122,15 @@ const CharacterProfileForm: React.FC<CharacterProfileFormProps> = ({ profile, se
         
         const groupImageUrl = await createGroupPhoto(imagePayload, apiKey);
         
-        const newGroupImage: CanonImage = {
+        const newAsset: GeneratedAsset = {
             id: `group-photo-${Date.now()}`,
-            name: 'Group Photo',
-            base64: groupImageUrl.split(',')[1],
+            type: AssetType.Image,
             url: groupImageUrl,
+            prompt: `Group photo created from ${groupImages.length} user-uploaded images.`,
+            createdAt: new Date().toISOString(),
         };
 
-        setProfile(prev => ({ ...prev, canonImages: [...prev.canonImages, newGroupImage] }));
+        addAsset(newAsset);
         setGroupImages([]);
 
     } catch (error) {
@@ -157,8 +173,8 @@ const CharacterProfileForm: React.FC<CharacterProfileFormProps> = ({ profile, se
 
   return (
     <Card title="Character Profile">
-      <div className="space-y-6">
-        <div className="space-y-4">
+      <div className="space-y-2">
+        <div className="space-y-4 p-2">
             <div>
               <Label htmlFor="name">Name</Label>
               <Input id="name" name="name" value={profile.name} onChange={handleChange} />
@@ -184,8 +200,7 @@ const CharacterProfileForm: React.FC<CharacterProfileFormProps> = ({ profile, se
             </div>
         </div>
 
-        <div>
-            <h3 className="text-md font-semibold text-gray-200 mb-2">Primary Character Image</h3>
+        <Accordion title="Primary Character Image" defaultOpen={true}>
              <p className="text-xs text-gray-500 mb-3">The main image for your influencer. This is required for editing.</p>
             {profile.aiModelImage ? (
                 <div className="relative group">
@@ -204,42 +219,42 @@ const CharacterProfileForm: React.FC<CharacterProfileFormProps> = ({ profile, se
                     Upload Primary Image
                 </Button>
             )}
-        </div>
+        </Accordion>
         
-        <div className="space-y-4 p-4 border border-dashed border-gray-600 rounded-lg bg-gray-800/30">
-          <h3 className="text-md font-semibold text-blue-300">Group Photo Creator</h3>
-          <p className="text-xs text-gray-400">Upload 2-10 photos of different people to create a single group photo.</p>
-          
-          {groupImages.length > 0 && (
-            <div className="grid grid-cols-5 gap-2">
-              {groupImages.map(img => (
-                <div key={img.id} className="relative group aspect-square">
-                  <img src={img.url} alt={img.name} className="rounded-md w-full h-full object-cover" />
-                  <button 
-                    onClick={() => removeGroupImage(img.id)}
-                    className="absolute -top-1 -right-1 bg-red-600/90 hover:bg-red-500 text-white rounded-full h-5 w-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-all"
-                    aria-label="Remove image"
-                  >
-                    &times;
-                  </button>
-                </div>
-              ))}
+        <Accordion title="Group Photo Creator">
+          <div className="space-y-4 p-2 border border-dashed border-gray-600 rounded-lg bg-gray-800/30">
+            <p className="text-xs text-gray-400">Upload 2-10 photos of different people to create a single group photo.</p>
+            
+            {groupImages.length > 0 && (
+              <div className="grid grid-cols-5 gap-2">
+                {groupImages.map(img => (
+                  <div key={img.id} className="relative group aspect-square">
+                    <img src={img.url} alt={img.name} className="rounded-md w-full h-full object-cover" />
+                    <button 
+                      onClick={() => removeGroupImage(img.id)}
+                      className="absolute -top-1 -right-1 bg-red-600/90 hover:bg-red-500 text-white rounded-full h-5 w-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-all"
+                      aria-label="Remove image"
+                    >
+                      &times;
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
+              <Button onClick={handleGroupPhotoUploadClick} className="w-full bg-gray-600 hover:bg-gray-500 text-sm" disabled={groupImages.length >= 10}>
+                Upload Photos ({groupImages.length}/10)
+              </Button>
+              <Button onClick={handleCreateGroupPhoto} className="w-full text-sm" disabled={isCreating || groupImages.length < 2}>
+                {isCreating ? <LoadingSpinner message="Creating..." /> : 'Create Group Photo'}
+              </Button>
             </div>
-          )}
-
-          <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
-            <Button onClick={handleGroupPhotoUploadClick} className="w-full bg-gray-600 hover:bg-gray-500 text-sm" disabled={groupImages.length >= 10}>
-              Upload Photos ({groupImages.length}/10)
-            </Button>
-            <Button onClick={handleCreateGroupPhoto} className="w-full text-sm" disabled={isCreating || groupImages.length < 2}>
-              {isCreating ? <LoadingSpinner message="Creating..." /> : 'Create Group Photo'}
-            </Button>
+            {groupError && <p className="text-xs text-center text-red-400 mt-2">{groupError}</p>}
           </div>
-          {groupError && <p className="text-xs text-center text-red-400 mt-2">{groupError}</p>}
-        </div>
+        </Accordion>
 
-        <div>
-            <h3 className="text-md font-semibold text-gray-200 mb-2">Additional Reference Images</h3>
+        <Accordion title="Additional Reference Images">
             <p className="text-xs text-gray-500 mb-3">Upload your own images for style or content references.</p>
             {profile.canonImages.length > 0 && (
                 <div className="grid grid-cols-3 gap-2 mb-3">
@@ -260,29 +275,30 @@ const CharacterProfileForm: React.FC<CharacterProfileFormProps> = ({ profile, se
             <Button onClick={handleCanonUploadClick} className="w-full bg-gray-600 hover:bg-gray-500">
                 Upload Image
             </Button>
-             <input
-                type="file"
-                ref={groupPhotoFileInputRef}
-                onChange={handleGroupPhotoFileSelected}
-                className="hidden"
-                accept="image/png, image/jpeg"
-                multiple
-            />
-            <input
-                type="file"
-                ref={canonFileInputRef}
-                onChange={handleCanonFileSelected}
-                className="hidden"
-                accept="image/png, image/jpeg"
-            />
-            <input
-                type="file"
-                ref={avatarFileInputRef}
-                onChange={handleAvatarFileSelected}
-                className="hidden"
-                accept="image/png, image/jpeg"
-            />
-        </div>
+        </Accordion>
+
+        <input
+            type="file"
+            ref={groupPhotoFileInputRef}
+            onChange={handleGroupPhotoFileSelected}
+            className="hidden"
+            accept="image/png, image/jpeg"
+            multiple
+        />
+        <input
+            type="file"
+            ref={canonFileInputRef}
+            onChange={handleCanonFileSelected}
+            className="hidden"
+            accept="image/png, image/jpeg"
+        />
+        <input
+            type="file"
+            ref={avatarFileInputRef}
+            onChange={handleAvatarFileSelected}
+            className="hidden"
+            accept="image/png, image/jpeg"
+        />
         
       </div>
     </Card>
